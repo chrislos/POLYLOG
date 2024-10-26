@@ -2,34 +2,45 @@ from pydub import AudioSegment
 import tgt
 import os
 
-# Load the TextGrid file
-tgs = tgt.read_textgrid("adv.TextGrid")
-print(tgs.get_tier_names())
+# Load the TextGrid files
+adv_tg = tgt.read_textgrid("adv.TextGrid")
+v_tg = tgt.read_textgrid("v.TextGrid")
 
-tg = tgt.read_textgrid("v.TextGrid")
-print(tg.get_tier_names())
+# Get the "Nuclei" tier from adv.TextGrid
+nuclei_tier = adv_tg.get_tier_by_name("Nuclei")
 
-word_tier = tg.get_tier_by_name("union")
-print(word_tier)
-
-
-# Get the "Nuclei" tier
-nuclei_tier = tgs.get_tier_by_name("Nuclei")
-# print(nuclei_tier)
+# Get the "union" tier from v.TextGrid
+union_tier = v_tg.get_tier_by_name("union")
 
 # Load the audio file
 audio = AudioSegment.from_file("a.wav")
 
-# Ensure the directory exists
-output_directory = "nuclei_audio"
-os.makedirs(output_directory, exist_ok=True)
+# Directory setup for Nuclei
+nuclei_output_dir = "nuclei_audio"
+os.makedirs(nuclei_output_dir, exist_ok=True)
 
-# Iterate over the points and slice the audio
+# Directory setup for speech and non-speech
+speech_output_dir = "speech"
+non_speech_output_dir = "non-speech"
+os.makedirs(speech_output_dir, exist_ok=True)
+os.makedirs(non_speech_output_dir, exist_ok=True)
+
+# Function to format filename as 7-digit number
+def format_filename(time_ms):
+    return f"{time_ms:07d}.wav"
+
+# Process Nuclei points for fixed 15 seconds duration
 for i, point in enumerate(nuclei_tier, 1):
     start_time = int(point.time * 1000)  # convert to milliseconds
     end_time = min(len(audio), start_time + 15000)  # 15 seconds after the point
     sliced_audio = audio[start_time:end_time]
-    # Export each sliced audio segment to the specified directory
-    sliced_audio.export(os.path.join(output_directory, f"nuclei_{i}.wav"), format="wav")
+    filename = format_filename(start_time)
+    sliced_audio.export(os.path.join(nuclei_output_dir, filename), format="wav")
 
-
+# Process Union intervals
+for interval in union_tier:
+    start_time = int(interval.start_time * 1000)
+    end_time = int(interval.end_time * 1000)
+    sliced_audio = audio[start_time:end_time]
+    folder = speech_output_dir if interval.text == "speech" else non_speech_output_dir
+    sliced_audio.export(os.path.join(folder, format_filename(start_time)), format="wav")
