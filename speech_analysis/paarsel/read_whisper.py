@@ -2,69 +2,106 @@ import os
 import whisper
 import librosa
 import numpy as np
-import nltk
-from nltk.corpus import cmudict
 from pydub import AudioSegment
-
-# Pfad zum CMU Pronouncing Dictionary festlegen
-nltk.data.path.append('/Users/christian/Dropbox/_Atelier_E/POLYLOG/PRODUCTION/sound/git/POLYLOG/speech_analysis/paarsel/nltk_data')
-
-# Lade das CMU Pronouncing Dictionary direkt
-cmu_dict = cmudict.dict()
-
-def get_first_phoneme(word):
-    """Extrahiere das erste Phonem für ein gegebenes Wort aus dem CMU Pronouncing Dictionary."""
-    word = word.lower().strip(".,!?-")
-    phonemes = cmu_dict.get(word, [])
-    return phonemes[0][0] if phonemes else None
+import matplotlib.pyplot as plt
 
 # Lade das Whisper-Modell und transkribiere die Audiodatei
 model = whisper.load_model("small")
-audio_file = "test_2.wav"
+audio_file = "test.wav"  # Ersetze durch den Pfad zu deiner Audiodatei
 result = model.transcribe(audio_file, language="en", word_timestamps=True)
 
 # Lade das Audiofile mit librosa
 y, sr = librosa.load(audio_file, sr=None)
 
-# Überprüfe, ob das Verzeichnis "phonemes" existiert, und erstelle es, wenn nicht
-if not os.path.exists('phonemes'):
-    os.makedirs('phonemes')
+# Lade das Audiofile mit PyDub
+audio_segment = AudioSegment.from_file(audio_file)
 
-# Extrahiere das erste Phonem und dessen Startzeit für jedes Wort
+# Stelle sicher, dass das Ausgabeverzeichnis existiert
+output_dir = 'words'
+os.makedirs(output_dir, exist_ok=True)
+
+# Funktion zur verstärkten Transientenerkennung
+def detect_stronger_onset(y_segment, sr, threshold=0.02, min_duration=0.02):
+    # Berechne die Kurzzeitenergie
+    hop_length = 256
+    frame_length = 512
+    energy = np.array([
+        np.sum(np.abs(y_segment[i:i+frame_length]**2))
+        for i in range(0, len(y_segment) - frame_length + 1, hop_length)
+    ])
+    # Normalisiere die Energie
+    energy = energy / np.max(energy)
+    # Finde die Indizes, bei denen die Energie den Schwellwert überschreitet
+    indices = np.where(energy > threshold)[0]
+    if len(indices) > 0:
+        # Finde den ersten Index, an dem die Energie für eine minimale Dauer über dem Schwellwert bleibt
+        for idx in indices:
+            duration = 0
+            while idx + duration < len(energy) and energy[idx + duration] > threshold:
+                duration += 1
+            if duration * hop_length / sr >= min_duration:
+                onset_sample = idx * hop_length
+                return onset_sample
+    return None
+
+# Verarbeite jedes Wort
 results = []
 
 for segment in result['segments']:
     for word_info in segment['words']:
         word = word_info['word'].strip()
         start_time_sec = word_info['start']
-        end_time_sec = word_info['end']
         start_sample = int(start_time_sec * sr)
-        end_sample = int(end_time_sec * sr)
-        
-        # **Korrigierter Codeabschnitt**
-        # Extrahiere den Audiobereich für das aktuelle Wort
+
+        # Erweitere das Analysefenster, um verzögerten Stimmeinsatz zu berücksichtigen
+        analysis_duration_sec = 3.0  # Analysiere bis zu 3 Sekunden nach der Startzeit
+        end_sample = start_sample + int(analysis_duration_sec * sr)
+        end_sample = min(end_sample, len(y))  # Begrenze auf die Audiodauer
+
+        # Extrahiere das Segment für die Analyse
         y_segment = y[start_sample:end_sample]
-        
-        # Führe eine Transientenanalyse durch
-        onset_env = librosa.onset.onset_strength(y=y_segment, sr=sr)
-        onset_frames = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr, units='samples', backtrack=True)
-        
-        if len(onset_frames) > 0:
-            # Finde den genauen Startpunkt relativ zum gesamten Audio
-            true_start_sample = start_sample + onset_frames[0]
-            true_start_time = true_start_sample / sr
+
+        # Verstärkte Transientenerkennung
+        onset_sample = detect_stronger_onset(
+            y_segment,
+            sr,
+            threshold=0.02,      # Schwellwert für Empfindlichkeit (je niedriger, desto empfindlicher)
+            min_duration=0.01    # Minimale Dauer, die über dem Schwellwert bleiben muss
+        )
+
+        if onset_sample is not None:
+            true_start_sample = start_sample + onset_sample
+            true_start_time_ms = (true_start_sample / sr) * 1000  # Konvertiere in Millisekunden
         else:
-            true_start_time = start_time_sec  # Fallback auf die ursprüngliche Startzeit
-        
-        first_phoneme = get_first_phoneme(word)
-        if first_phoneme:
-            results.append((first_phoneme, true_start_time * 1000))  # Konvertiere in Millisekunden
-            # Schneide das Audio mit PyDub
-            audio_segment = AudioSegment.from_wav(audio_file)
-            slice = audio_segment[true_start_time * 1000:true_start_time * 1000 + 15000]  # 15 Sekunden
-            filename = f"{int(true_start_time * 1000):07d}_{first_phoneme}.wav"
-            slice.export(f"phonemes/{filename}", format="wav")
+            # Fallback auf die ursprüngliche Startzeit von Whisper
+            true_start_time_ms = start_time_sec * 1000
+
+        # Stelle sicher, dass der Startpunkt innerhalb der Audiodauer liegt
+        audio_duration_ms = len(audio_segment)
+        if true_start_time_ms >= audio_duration_ms:
+            continue  # Überspringe dieses Wort
+
+        # Schneide das Audio ab der präzisen Startzeit, Länge 15 Sekunden
+        slice_end_time_ms = true_start_time_ms + 15000  # 15 Sekunden in Millisekunden
+        if slice_end_time_ms > audio_duration_ms:
+            # Fülle mit Stille auf, wenn nötig
+            missing_duration_ms = slice_end_time_ms - audio_duration_ms
+            slice_audio = audio_segment[true_start_time_ms:]
+            silence_segment = AudioSegment.silent(duration=missing_duration_ms)
+            slice_audio += silence_segment
+        else:
+            slice_audio = audio_segment[true_start_time_ms:slice_end_time_ms]
+
+        # Benutze den Anfangsbuchstaben des Wortes im Dateinamen
+        starting_letter = word[0].upper() if word else 'UNKNOWN'
+
+        # Formatieren des Dateinamens
+        filename = f"{int(true_start_time_ms):07d}_{starting_letter}.wav"
+        output_path = os.path.join(output_dir, filename)
+        slice_audio.export(output_path, format="wav")
+
+        results.append((starting_letter, true_start_time_ms))
 
 # Ausgabe der Ergebnisse
-for phoneme, time in results:
-    print(f"Erstes Phonem: {phoneme}, Startzeit: {time:.3f}ms")
+for letter, time in results:
+    print(f"Anfangsbuchstabe: {letter}, Startzeit: {time:.3f} ms")
