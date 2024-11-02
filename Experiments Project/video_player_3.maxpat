@@ -10,7 +10,7 @@
 		}
 ,
 		"classnamespace" : "box",
-		"rect" : [ 847.0, 638.0, 966.0, 337.0 ],
+		"rect" : [ 296.0, 298.0, 1304.0, 665.0 ],
 		"bglocked" : 0,
 		"openinpresentation" : 0,
 		"default_fontsize" : 12.0,
@@ -113,6 +113,18 @@
 			}
 , 			{
 				"box" : 				{
+					"id" : "obj-8",
+					"maxclass" : "jit.pwindow",
+					"numinlets" : 1,
+					"numoutlets" : 2,
+					"outlettype" : [ "jit_matrix", "" ],
+					"patching_rect" : [ 877.0, 447.0, 655.0, 461.0 ],
+					"sync" : 1
+				}
+
+			}
+, 			{
+				"box" : 				{
 					"id" : "obj-6",
 					"maxclass" : "newobj",
 					"numinlets" : 1,
@@ -144,7 +156,7 @@
 					"numoutlets" : 2,
 					"outlettype" : [ "", "bang" ],
 					"parameter_enable" : 0,
-					"patching_rect" : [ 1480.0, 183.0, 160.0, 22.0 ]
+					"patching_rect" : [ 1485.0, 98.0, 160.0, 22.0 ]
 				}
 
 			}
@@ -155,7 +167,7 @@
 					"numinlets" : 1,
 					"numoutlets" : 5,
 					"outlettype" : [ "", "", "", "", "" ],
-					"patching_rect" : [ 1583.200023591518402, 101.600001513957977, 80.0, 22.0 ],
+					"patching_rect" : [ 1584.0, 27.0, 80.0, 22.0 ],
 					"text" : "regexp ^(.{7})"
 				}
 
@@ -269,6 +281,15 @@
 , 			{
 				"patchline" : 				{
 					"destination" : [ "obj-4", 0 ],
+					"order" : 1,
+					"source" : [ "obj-17", 0 ]
+				}
+
+			}
+, 			{
+				"patchline" : 				{
+					"destination" : [ "obj-8", 0 ],
+					"order" : 0,
 					"source" : [ "obj-17", 0 ]
 				}
 
