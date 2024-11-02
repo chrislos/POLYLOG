@@ -3,11 +3,18 @@ import whisper
 import librosa
 import numpy as np
 from pydub import AudioSegment
-import matplotlib.pyplot as plt
+import torch
 
-# Lade das Whisper-Modell und transkribiere die Audiodatei
-model = whisper.load_model("small")
-audio_file = "test.wav"  # Ersetze durch den Pfad zu deiner Audiodatei
+# Setze das Gerät auf CPU
+device = torch.device("cpu")
+print(f"Verwende Gerät: {device}")
+
+# Lade das Whisper-Modell auf die CPU
+model = whisper.load_model("small", device=device)
+audio_file = "poly.wav"  # Ersetze durch deinen Dateipfad
+
+
+# Transkribiere die Audiodatei mit dem Modell auf dem ausgewählten Gerät
 result = model.transcribe(audio_file, language="en", word_timestamps=True)
 
 # Lade das Audiofile mit librosa
@@ -30,7 +37,8 @@ def detect_stronger_onset(y_segment, sr, threshold=0.02, min_duration=0.02):
         for i in range(0, len(y_segment) - frame_length + 1, hop_length)
     ])
     # Normalisiere die Energie
-    energy = energy / np.max(energy)
+    if np.max(energy) > 0:
+        energy = energy / np.max(energy)
     # Finde die Indizes, bei denen die Energie den Schwellwert überschreitet
     indices = np.where(energy > threshold)[0]
     if len(indices) > 0:
@@ -53,7 +61,7 @@ for segment in result['segments']:
         start_time_sec = word_info['start']
         start_sample = int(start_time_sec * sr)
 
-        # Erweitere das Analysefenster, um verzögerten Stimmeinsatz zu berücksichtigen
+        # Erweitere das Analysefenster
         analysis_duration_sec = 3.0  # Analysiere bis zu 3 Sekunden nach der Startzeit
         end_sample = start_sample + int(analysis_duration_sec * sr)
         end_sample = min(end_sample, len(y))  # Begrenze auf die Audiodauer
@@ -65,13 +73,13 @@ for segment in result['segments']:
         onset_sample = detect_stronger_onset(
             y_segment,
             sr,
-            threshold=0.02,      # Schwellwert für Empfindlichkeit (je niedriger, desto empfindlicher)
-            min_duration=0.01    # Minimale Dauer, die über dem Schwellwert bleiben muss
+            threshold=0.02,      # Schwellwert für Empfindlichkeit
+            min_duration=0.01    # Minimale Dauer über dem Schwellwert
         )
 
         if onset_sample is not None:
             true_start_sample = start_sample + onset_sample
-            true_start_time_ms = (true_start_sample / sr) * 1000  # Konvertiere in Millisekunden
+            true_start_time_ms = (true_start_sample / sr) * 1000  # In Millisekunden
         else:
             # Fallback auf die ursprüngliche Startzeit von Whisper
             true_start_time_ms = start_time_sec * 1000
