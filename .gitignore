@@ -51,3 +51,5 @@ speech_analysis/paarsel/a-marksyllables.TextGrid
 *.TextGrid
 speech_analysis/paarsel/poly.wav.asd
 *.asd
+Concert Project/Backup
+Concert Project/Samples
